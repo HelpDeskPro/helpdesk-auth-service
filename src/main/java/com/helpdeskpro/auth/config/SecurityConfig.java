@@ -7,6 +7,8 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
@@ -14,44 +16,74 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(
-            HttpSecurity http
+            HttpSecurity http,
+            JwtAuthenticationConverter jwtAuthenticationConverter
     ) throws Exception {
 
         return http
-
-                // Disable CSRF because we are building a stateless REST API
                 .csrf(AbstractHttpConfigurer::disable)
 
-                // Disable default login mechanisms
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
 
-                // We will use JWT instead of HTTP sessions
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(
                                 SessionCreationPolicy.STATELESS
                         )
                 )
 
-                // Endpoint permissions
+                // PUT THE AUTHORIZATION BLOCK HERE
                 .authorizeHttpRequests(auth -> auth
 
-                        // Public registration endpoint
                         .requestMatchers(
                                 HttpMethod.POST,
-                                "/api/v1/auth/register"
+                                "/api/v1/auth/register",
+                                "/api/v1/auth/login",
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout"
                         ).permitAll()
 
-                        // Public login endpoint
-                        .requestMatchers(
-                                HttpMethod.POST,
-                                "/api/v1/auth/login"
-                        ).permitAll()
+                        .requestMatchers("/api/v1/admin/**")
+                        .hasRole("ADMIN")
 
-                        // Deny everything else for now
-                        .anyRequest().denyAll()
+                        .requestMatchers("/api/v1/agent/**")
+                        .hasAnyRole("ADMIN", "IT_AGENT")
+
+                        .requestMatchers("/api/v1/auth/me")
+                        .authenticated()
+
+                        .anyRequest()
+                        .authenticated()
+                )
+
+                // JWT VALIDATION
+                .oauth2ResourceServer(oauth2 ->
+                        oauth2.jwt(jwt ->
+                                jwt.jwtAuthenticationConverter(
+                                        jwtAuthenticationConverter
+                                )
+                        )
                 )
 
                 .build();
+    }
+
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+
+        JwtGrantedAuthoritiesConverter authoritiesConverter =
+                new JwtGrantedAuthoritiesConverter();
+
+        authoritiesConverter.setAuthoritiesClaimName("role");
+        authoritiesConverter.setAuthorityPrefix("ROLE_");
+
+        JwtAuthenticationConverter authenticationConverter =
+                new JwtAuthenticationConverter();
+
+        authenticationConverter.setJwtGrantedAuthoritiesConverter(
+                authoritiesConverter
+        );
+
+        return authenticationConverter;
     }
 }

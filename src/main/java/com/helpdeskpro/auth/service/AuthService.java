@@ -2,13 +2,9 @@
 package com.helpdeskpro.auth.service;
 
 
-import com.helpdeskpro.auth.dto.AuthResponse;
-import com.helpdeskpro.auth.dto.LoginRequest;
-import com.helpdeskpro.auth.dto.RegisterRequest;
-import com.helpdeskpro.auth.dto.UserResponse;
+import com.helpdeskpro.auth.dto.*;
 import com.helpdeskpro.auth.entity.User;
 import com.helpdeskpro.auth.enums.Role;
-import com.helpdeskpro.auth.exception.AccountNotEnabledException;
 import com.helpdeskpro.auth.exception.EmailAlreadyRegisteredException;
 import com.helpdeskpro.auth.exception.InvalidCredentialsException;
 import com.helpdeskpro.auth.repository.UserRepository;
@@ -25,15 +21,18 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final RefreshTokenService refreshTokenService;
 
     public AuthService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            JwtService jwtService
+            JwtService jwtService,
+            RefreshTokenService refreshTokenService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.refreshTokenService = refreshTokenService;
     }
 
     // REGISTRATION
@@ -51,7 +50,9 @@ public class AuthService {
             );
         }
 
-        String hashedPassword = passwordEncoder.encode(request.password());
+        String hashedPassword = passwordEncoder.encode(
+                request.password()
+        );
 
         User user = new User(
                 request.firstName().trim(),
@@ -76,7 +77,7 @@ public class AuthService {
 
     // LOGIN
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthResponse login(LoginRequest request) {
 
         String email = request.email()
@@ -98,15 +99,59 @@ public class AuthService {
         }
 
         if (!user.isEnabled()) {
-            throw new AccountNotEnabledException(
-                    "Your account has not been activated"
+            throw new InvalidCredentialsException(
+                    "Invalid email or password"
             );
         }
 
-        String token = jwtService.generateToken(user);
+        String accessToken = jwtService.generateToken(user);
 
+        String refreshToken = refreshTokenService.createRefreshToken(user);
+
+        return buildAuthResponse(user, accessToken, refreshToken);
+    }
+
+    // REFRESH TOKENS
+
+    @Transactional
+    public AuthResponse refresh(RefreshTokenRequest request) {
+
+        RefreshTokenService.RotatedRefreshToken rotatedToken =
+                refreshTokenService.rotateRefreshToken(
+                        request.refreshToken()
+                );
+
+        User user = rotatedToken.user();
+
+        String accessToken = jwtService.generateToken(user);
+
+        return buildAuthResponse(
+                user,
+                accessToken,
+                rotatedToken.rawToken()
+        );
+    }
+
+    // LOGOUT
+
+    @Transactional
+    public void logout(RefreshTokenRequest request) {
+
+        refreshTokenService.revokeRefreshToken(
+                request.refreshToken()
+        );
+    }
+
+    // BUILD AUTHENTICATION RESPONSE
+
+    private AuthResponse buildAuthResponse(
+            User user,
+            String accessToken,
+            String refreshToken
+    ) {
         return new AuthResponse(
-                token,
+                accessToken,
+                refreshToken,
                 "Bearer",
                 jwtService.getExpirationSeconds(),
                 user.getId(),

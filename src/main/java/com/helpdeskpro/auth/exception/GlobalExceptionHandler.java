@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import com.helpdeskpro.auth.exception.InvalidRefreshTokenException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -77,6 +78,18 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .badRequest()
+                .body(errors);
+    }
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidRefreshToken(
+            InvalidRefreshTokenException exception
+    ) {
+        Map<String, String> errors = new HashMap<>();
+
+        errors.put("message", exception.getMessage());
+
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
                 .body(errors);
     }
 }
