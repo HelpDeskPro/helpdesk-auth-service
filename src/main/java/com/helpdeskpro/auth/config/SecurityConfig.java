@@ -1,30 +1,34 @@
 
 package com.helpdeskpro.auth.config;
 
+import com.helpdeskpro.auth.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
+@EnableWebSecurity
 public class SecurityConfig {
 
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    }
+
     @Bean
-    public SecurityFilterChain securityFilterChain(
-            HttpSecurity http,
-            JwtAuthenticationConverter jwtAuthenticationConverter
-    ) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http)
+            throws Exception {
 
-        return http
-                .csrf(AbstractHttpConfigurer::disable)
-
-                .formLogin(AbstractHttpConfigurer::disable)
-                .httpBasic(AbstractHttpConfigurer::disable)
+        http
+                .csrf(csrf -> csrf.disable())
 
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(
@@ -32,7 +36,6 @@ public class SecurityConfig {
                         )
                 )
 
-                // PUT THE AUTHORIZATION BLOCK HERE
                 .authorizeHttpRequests(auth -> auth
 
                         .requestMatchers(
@@ -40,50 +43,30 @@ public class SecurityConfig {
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/refresh",
-                                "/api/v1/auth/logout"
+                                "/api/v1/auth/logout",
+                                "/api/v1/auth/resend-verification",
+                                "/api/v1/auth/forgot-password",
+                                "/api/v1/auth/reset-password"
                         ).permitAll()
 
-                        .requestMatchers("/api/v1/admin/**")
-                        .hasRole("ADMIN")
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/auth/verify-email"
+                        ).permitAll()
 
-                        .requestMatchers("/api/v1/agent/**")
-                        .hasAnyRole("ADMIN", "IT_AGENT")
-
-                        .requestMatchers("/api/v1/auth/me")
-                        .authenticated()
-
-                        .anyRequest()
-                        .authenticated()
+                        .anyRequest().authenticated()
                 )
 
-                // JWT VALIDATION
-                .oauth2ResourceServer(oauth2 ->
-                        oauth2.jwt(jwt ->
-                                jwt.jwtAuthenticationConverter(
-                                        jwtAuthenticationConverter
-                                )
-                        )
-                )
+                .addFilterBefore(
+                        jwtAuthenticationFilter,
+                        UsernamePasswordAuthenticationFilter.class
+                );
 
-                .build();
+        return http.build();
     }
 
     @Bean
-    public JwtAuthenticationConverter jwtAuthenticationConverter() {
-
-        JwtGrantedAuthoritiesConverter authoritiesConverter =
-                new JwtGrantedAuthoritiesConverter();
-
-        authoritiesConverter.setAuthoritiesClaimName("role");
-        authoritiesConverter.setAuthorityPrefix("ROLE_");
-
-        JwtAuthenticationConverter authenticationConverter =
-                new JwtAuthenticationConverter();
-
-        authenticationConverter.setJwtGrantedAuthoritiesConverter(
-                authoritiesConverter
-        );
-
-        return authenticationConverter;
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 }

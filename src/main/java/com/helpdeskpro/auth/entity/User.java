@@ -5,25 +5,14 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Getter
-@Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-
 @Entity
-@Table(
-        name = "users",
-        uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "uk_users_email",
-                        columnNames = "email"
-                )
-        }
-)
+@Table(name = "users")
 public class User {
 
     @Id
@@ -36,7 +25,7 @@ public class User {
     @Column(nullable = false, length = 100)
     private String lastName;
 
-    @Column(nullable = false, length = 150)
+    @Column(nullable = false, unique = true, length = 150)
     private String email;
 
     @Column(nullable = false)
@@ -82,4 +71,11 @@ public class User {
         this.updatedAt = LocalDateTime.now();
     }
 
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public void changePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
 }

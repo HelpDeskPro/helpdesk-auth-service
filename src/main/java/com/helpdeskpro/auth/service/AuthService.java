@@ -12,7 +12,8 @@ import com.helpdeskpro.auth.security.JwtService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.helpdeskpro.auth.mapper.UserMapper;
+import com.helpdeskpro.auth.service.EmailVerificationService;
 import java.util.Locale;
 
 @Service
@@ -22,17 +23,21 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
+    private final EmailVerificationService emailVerificationService;
+    private final UserMapper userMapper;
 
     public AuthService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-            RefreshTokenService refreshTokenService
+            RefreshTokenService refreshTokenService, EmailVerificationService emailVerificationService, UserMapper userMapper
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.refreshTokenService = refreshTokenService;
+        this.emailVerificationService = emailVerificationService;
+        this.userMapper = userMapper;
     }
 
     // REGISTRATION
@@ -40,39 +45,34 @@ public class AuthService {
     @Transactional
     public UserResponse register(RegisterRequest request) {
 
-        String email = request.email()
+        String normalizedEmail = request.email()
                 .trim()
-                .toLowerCase(Locale.ROOT);
+                .toLowerCase();
 
-        if (userRepository.existsByEmail(email)) {
+        if (userRepository.existsByEmail(normalizedEmail)) {
             throw new EmailAlreadyRegisteredException(
-                    "An account with this email already exists"
+                    "Email is already registered"
             );
         }
 
-        String hashedPassword = passwordEncoder.encode(
-                request.password()
-        );
+        String encodedPassword =
+                passwordEncoder.encode(request.password());
 
         User user = new User(
-                request.firstName().trim(),
-                request.lastName().trim(),
-                email,
-                hashedPassword,
+                request.firstName(),
+                request.lastName(),
+                normalizedEmail,
+                encodedPassword,
                 Role.EMPLOYEE
         );
 
         User savedUser = userRepository.save(user);
 
-        return new UserResponse(
-                savedUser.getId(),
-                savedUser.getFirstName(),
-                savedUser.getLastName(),
-                savedUser.getEmail(),
-                savedUser.getRole(),
-                savedUser.isEnabled(),
-                savedUser.getCreatedAt()
-        );
+        // Generate a verification token and send the email.
+        emailVerificationService.createAndSendVerificationToken(savedUser);
+
+        // Convert the entity into a response DTO.
+        return userMapper.toResponse(savedUser);
     }
 
     // LOGIN
